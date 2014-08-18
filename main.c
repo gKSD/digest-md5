@@ -37,197 +37,365 @@ void generate_random_string(char *s, const int slen)
     for (int i = 0; i < slen - 1; ++i)
         s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
     s[slen - 1] = '\0';
-    printf("generate_random_string, slen: %i, s: %s, strlen(s): %i\n", slen, s, strlen(s));
+    //printf("generate_random_string, slen: %i, s: %s, strlen(s): %i\n", slen, s, strlen(s));
 } 
 
-int get_server_challenge_params(const char *host, const char *server_answer, int server_answer_size, mpop_string *realm, mpop_string *nonce,
-                                mpop_string *qop, mpop_string *stale, int *maxbuf,
-                                mpop_string  *charset, mpop_string *algorithm, mpop_string *cipher, mpop_string *auth_param)
+bool is_CTL(char c)
 {
-    char *ptr , *cursor = (char *)server_answer, *right;
+    return (c >= 0 && c <= 31 || c == 127);
+}
+
+bool is_separator(char c)
+{
+    return (c == '(' || c == ')' || c == '<' || c == '>' || c == '@'
+                || c == ',' || c == ';' || c == ':' || c == '\\' || c == '\"'
+                || c == '/' || c == '[' || c == ']' || c == '?' || c == '='
+                || c == '{' || c == '}' || c == ' ' || c == '\t');
+}
+
+bool is_token(char c)
+{
+    return (!is_CTL(c) && !is_separator(c));
+}
+
+bool is_valid_TEXT(const char *str)
+{
+    char *ptr = (char *)str;
+    for (; ptr && *ptr; ptr++)
+        if(*ptr != ' ' && *ptr != '\t' && is_CTL(*ptr))
+            return false;
+    return true;
+}
+
+int parse_next_param(char **str, char *param, char *param_value, int *is_quoted)
+{
+    char *cursor = (char *)*str;
+    char *param_pos, *param_value_pos;
+    ptrdiff_t delta;
+
+    if(*cursor == ',')
+        cursor++;
     
-    if(ptr = strstr(cursor, "realm="))
+    *is_quoted = -1;
+
+    while (isspace(*cursor)) cursor++;
+    param_pos = cursor;
+    while(cursor && *cursor && *cursor != '=' && *cursor != ',')
+        cursor++;
+    delta = cursor - param_pos + 1;
+    if(delta == 1)
     {
-        ptr += 6;
-        if (*ptr != '"') 
+        printf("Invalid digest-challenge\n");
+        return -1;
+    }
+
+    snprintf(param, delta, "%s", param_pos);
+
+    if(*cursor != '=')
+    {
+        printf("Invalid digest-challenge\n");
+        return -1;
+    }
+    cursor++;
+    while (isspace(*cursor)) cursor++;
+
+    if(*cursor == '"')
+    {
+        param_value_pos = ++cursor;
+        while(cursor && *cursor && *cursor != '"') cursor++;
+        if(*cursor != '"')
+        {
+            printf("Invalid digest-challenge\n");
+            return -1;
+        }
+        cursor++;
+        delta = cursor - param_value_pos;
+        *is_quoted = 1;
+    }
+    else 
+    {
+        param_value_pos = cursor;
+        while(cursor && *cursor && *cursor != ',') cursor++;
+        *is_quoted = 0;
+        delta = cursor - param_value_pos + 1;
+    }
+
+    if(delta == 1)
+    {
+         printf("Invalid digest-challenge\n");
+         return -1;
+    }
+    snprintf(param_value, delta, "%s", param_value_pos);
+
+    *str = cursor;
+    return 1;
+}
+
+int process_param(const char *param, const char *param_value, int is_quoted_param_value, mpop_string *realm, mpop_string *nonce,
+                    mpop_string *qop, mpop_string *stale, int *maxbuf, int *maxbuf_found, mpop_string *charset, mpop_string *algorithm,
+                    mpop_string *cipher, char *auth_param, mpop_string *auth_param_value)
+{
+    if(strcmp(param, "realm") == 0)
+    {
+        if (!is_quoted_param_value)
         {
             printf("Error, realm not well-formed! \n");
             return -1; //not well-formed realm-value
         }
-        ptr++;
-        right = ptr;
-        printf("realm, right: %s, ptr: %s\n", right, ptr);
-        while (right && *right && *right != '"' )
-            right++;
-        ptrdiff_t realm_size = right - ptr;
-        add_stringn(realm,ptr,realm_size);
-        printf("KSD realm: %s, realm_size.size: %i, realm_size: %i\n", realm->string, realm->size, realm_size);
+        if(realm->size != 0)
+            return 1; //multiple instances of realm value are possible; use the first one
+        add_string(realm, param_value);
     }
-    else
+    else if(strcmp(param, "nonce") == 0)
     {
-        //Form our realm
-        printf("ImapXS: client forms realm\n");
-        //add_string(realm, host);
-        add_string(realm, "");
-    }
-    printf("realm: %s, realm->size: %i\n", realm->string, realm->size);
-
-    //S: realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
-    if(ptr = strstr(cursor, "nonce="))
-    {
-        ptr += 6;
-        if (*ptr != '"')
+        if (!is_quoted_param_value)
         {
             printf("Error, nonce not well-formed! \n");
             return -1;
         }
-        ptr++;
-        right = ptr;
-        printf("nonce, right: %s, ptr: %s\n", right, ptr);
-        while (right && *right && *right != '"')
-            right++;
-        ptrdiff_t nonce_size = right - ptr;
-        add_stringn(nonce, ptr, nonce_size);
-        printf("KSD nonce: %s, nonce_size.size: %i, nonce_size: %i\n", nonce->string, nonce->size, nonce_size);
+        if(nonce->size != 0)
+        {
+            printf("Multiple instances of \"nonce\", abort auth\n");
+            return -1;
+        }
+        add_string(nonce, param_value);
     }
-    else
+    else if(strcmp(param, "qop") == 0)
     {
-        printf("ImapXS: server challenge doesn't contain nonce, abort authentication\n");
-        return -1; //ABORT AUTH
-    }
-
-    if(ptr = strstr(cursor, "qop="))
-    {
-        ptr += 4;
-        if (*ptr != '"')
+        if (!is_quoted_param_value)
         {
             printf("Error, qop-options not well-formed! \n");
             return -1;
         }
-        ptr++;
-        int ptr_len = strlen(ptr);
-        if(ptr_len >= 8 && strncmp(ptr, "auth-int", 8) == 0) add_stringn(qop, ptr, 8);
-        else if(ptr_len >= 9 && strncmp(ptr, "auth-conf", 9) == 0) 
+        if(qop->size != 0)
         {
-            //add_stringn(qop, ptr, 9);
+            printf("Multiple instances of \"qop\", abort auth\n");
+            return -1;
+        }
+        int param_value_len = strlen(param_value);
+        if(param_value_len >= 8 && strncmp(param_value, "auth-int", 8) == 0) add_stringn(qop, param_value, 8);
+        else if(param_value_len >= 9 && strncmp(param_value, "auth-conf", 9) == 0)
+        {
+            //add_stringn(qop, param_value, 9);
 
             //TODO: support this qop-option
             printf("Temprorary unsupported qop-option, abort auth");
             return -1;
         }
-        else if(ptr_len >= 4 && strncmp(ptr, "auth", 4) == 0) add_stringn(qop, ptr, 4);
+        else if(param_value_len >= 4 && strncmp(param_value, "auth", 4) == 0) add_stringn(qop, param_value, 4);
         else 
         {
             printf("Invalid qop-options value\n");
-            return -1; //ABORT AUTH
-        }
-        printf("KSD qop-options: %s, qop_size.size: %i\n", qop->string, qop->size);
-    }
-    else
-    {
-        printf("qop-options default value = auth\n");
-        add_string(qop, "auth");
-        printf("KSD qop-options: %s, qop_size.size: %i\n", qop->string, qop->size);
-    }
-
-    if((ptr = strstr(cursor, "maxbuf=")) && (qop->size == 8 && strncmp(qop->string, "auth-int", 8) == 0 || qop->size == 9 && strncmp(qop->string, "auth-conf", 9) == 0))
-    {
-        ptr += 7;
-        char ss[10];
-        memset(ss, 0, 10);
-        right = ptr;
-        for(int i = 0; right && *right && isdigit(*right); right++)
-            ss[i++] = *right;
-        //printf("ss: %s\n", ss);
-        if(right == ptr) 
-        {
-            printf("Invalid maxbuf\n");
             return -1;
         }
-        *maxbuf = atoi(ss);
-        if(ptr =strstr(ptr, "maxbuf"))
+    }
+    else if(strcmp(param, "maxbuf") == 0)
+    {
+        if(*maxbuf_found)
         {
             printf("Multiple instances of \"maxbuf\", abort auth\n");
-            return -1; //ABORT AUTH
+            return -1;
         }
-        printf("Maxbuf: %i\n", *maxbuf);
+        *maxbuf = atoi(param_value);
+        *maxbuf_found = 1;
     }
-    else
-        *maxbuf = 65535;
-
-    if(ptr = strstr(cursor, "charset="))
+    else if(strcmp(param, "charset") == 0)
     {
-        ptr += 8;
-        if(strlen(ptr) >= 5 && strncmp(ptr, "utf-8", 5) == 0)
-            add_stringn(charset, ptr, 5);
+        if(charset->size != 0)
+        {
+            printf("Multiple instances of \"charset\", abort auth\n");
+            return -1;
+        }
+        if(strcmp(param_value, "utf-8") == 0)
+            add_string(charset, param_value);
         else
         {
             printf("Invalid \"charset\", abort auth\n");
             return -1;
         }
-        printf("charset, right: %s, ptr: %s\n", right, ptr);
-        if(ptr = strstr(ptr, "charset"))
+    }
+    else if(strcmp(param, "algorithm") == 0)
+    {
+        if(algorithm->size != 0)
         {
-            printf("Multiple instances of \"charset\", abort auth\n");
-            return -1; //ABORT AUTH
+            printf("Multiple instances of \"algorithm\", abort auth\n");
+            return -1;
         }
-    }
-    else
-    {
-        //default == ASCII
-    }
-
-    if(ptr = strstr(cursor, "algorithm="))
-    {
-        ptr += 10;
-        if(strlen(ptr) >= 8 && strncmp(ptr, "md5-sess", 8) == 0)
-            add_stringn(algorithm, ptr, 8);
+        if(strcmp(param_value, "md5-sess") == 0)
+            add_string(algorithm, param_value);
         else
         {
             printf("Invalid \"algorithm\", abort auth\n");
             return -1;
         }
-        if(ptr = strstr(ptr, "algorithm"))
-        {
-            printf("Multiple instances of \"algorithm\", abort auth\n");
-            return -1;
-        }
     }
-    else
+    else if(strcmp(param, "cipher") == 0)
     {
-        printf("\"algorithm\" is not present in server challenge, abort auth\n");
-        return -1;
-    }
-
-    if((ptr = strstr(cursor, "cipher=")) && (qop->size == 9 && strncmp(qop->string, "auth-conf", 9) == 0))
-    {
-        ptr += 7;
-        if (*ptr != '"') 
-        {
-            printf("Error, cipher not well-formed! \n");
-            return -1; //not well-formed realm-value
-        }
-        int ptr_len = strlen(ptr);
-        if(ptr_len >= 3 && strncmp(ptr, "des", 3) == 0) add_stringn(cipher, ptr, 3);
-        else if(ptr_len >= 4 && strncmp(ptr, "3des", 4) == 0) add_stringn(cipher, ptr, 4);
-        else if(ptr_len >= 3 && strncmp(ptr, "rc4", 3) == 0) add_stringn(cipher, ptr, 3);
-        else if(ptr_len >= 6 && strncmp(ptr, "rc4-40", 6) == 0) add_stringn(cipher, ptr, 6);
-        else if(ptr_len >= 6 && strncmp(ptr, "rc4-56", 6) == 0) add_stringn(cipher, ptr, 6);
-        else 
-        {
-            printf("ImapXS: invalid cipher-opts value\n");
-            return -1; //ABORT AUTH
-        }
-
-        if(ptr = strstr(ptr, "cipher"))
+        if(cipher->size != 0)
         {
             printf("Multiple instances of \"cipher\", abort auth\n");
             return -1;
         }
+        if (!is_quoted_param_value)
+        {
+            printf("Error, \"cipher-opt\" not well-formed! \n");
+            return -1;
+        }
 
+        if(strcmp(param_value, "des") == 0 || strcmp(param_value, "3des") == 0 || strcmp(param_value, "rc4") == 0
+                || strcmp(param_value, "rc4-40") == 0 || strcmp(param_value, "rc4-56") == 0)
+            add_string(cipher, param_value);
+        else
+        {
+            printf("Invalid cipher-opts value\n");
+            return -1; //ABORT AUTH
+        }
+    }
+    else if(strlen(param) == 1)
+    {
+        char c = *param;
+        if(!is_token(c))
+        {
+            printf("Unexpected value of auth-param\n");
+            return -1;
+        }
+        *auth_param = c;
+        if (!(strlen(param_value) == 1 && is_token(*param_value)) && !(is_quoted_param_value && is_valid_TEXT(param_value)))
+        {
+            printf("Invalid auth-param value\n");
+            return -1;
+        }
+        add_string(auth_param_value, param_value);
+    }
+    else if (strcmp(param, "stale") == 0)
+    {
+        if(stale->size != 0)
+        {
+            printf("Multiple instances of \"stale\", abort auth\n");
+            return -1;
+        }
+        if(strcmp(param_value, "true") == 0)
+            add_string(stale, param_value);
+        else
+        {
+            printf("Invalid stale value\n");
+            return -1;
+        }
     }
 
-    //stale !!!
+    return 1;
+}
+
+int get_server_challenge_params(const char *host, const char *digest_challenge, int digest_challenge_size,
+                                    mpop_string *realm, mpop_string *nonce, mpop_string *qop,
+                                    mpop_string *stale, int *maxbuf, mpop_string  *charset,
+                                    mpop_string *algorithm, mpop_string *cipher, char *auth_param, mpop_string *auth_param_value)
+{
+    char *cursor = (char *)digest_challenge;
+    char *param, *param_value;
+    int is_quoted_param_value;
+
+    *maxbuf = 0;
+
+    if(digest_challenge_size == 0)
+    {
+        printf("Empty digest-challenge from server, abort auth");
+        return -1;
+    }
+
+    int maxbuf_found = 0;
+
+    //size of param and param_value can't be more than digest_challenge_size
+    param = (char *)malloc(digest_challenge_size);
+    param_value = (char *)malloc(digest_challenge_size);
+    if(!param || !param_value)
+    {
+        printf("Can't allocate memory\n");
+        return -1;
+    }
+
+    printf("REQUEST: %s\n", cursor);
+
+    while(cursor && *cursor)
+    {
+        memset(param, 0, digest_challenge_size);
+        memset(param_value, 0, digest_challenge_size);
+        if(parse_next_param(&cursor, param, param_value, &is_quoted_param_value) == -1)
+        {
+            free(param);
+            free(param_value);
+            return -1;
+        }
+
+        //printf("param: %s, param_value: %s\n", param, param_value);
+
+        if(process_param(param, param_value, is_quoted_param_value, realm, nonce, qop, stale,
+                            maxbuf, &maxbuf_found, charset, algorithm, cipher, auth_param, auth_param_value) == -1)
+        {
+            free(param);
+            free(param_value);
+            return -1;
+        }
+        //if(*cursor == ',') cursor++;
+    }
+    free(param);
+    free(param_value);
+
+    if(realm->size == 0)
+    {
+        //printf("ImapXS: client forms realm\n");
+        //add_string(realm, host);
+        add_char(realm, '\0');
+    }
+    if(nonce->size == 0)
+    {
+        printf("\"nonce\" is not present in server challenge, abort auth\n");
+        return -1;
+    }
+
+    if(qop->size == 0)
+    {
+        add_string(qop, "auth");
+    }
+
+    if(maxbuf_found && strcmp(qop->string, "auth") == 0)
+    {
+        printf("\"maxbuf\" must be present only when using \"auth-int\" or \"auth-conf\"\n");
+        return -1;
+    }
+    else if(!maxbuf_found && strcmp(qop->string, "auth") != 0)
+    {
+        *maxbuf = 65535; //default
+    }
+
+    if(charset->size == 0)
+    {
+        add_char(charset, '\0');
+        //default -> ascii
+    }
+    if(algorithm->size == 0)
+    {
+        printf("\"algorithm\" is not present in server challenge, abort auth\n");
+        return -1;
+    }
+    if(cipher->size != 0 && strcmp(qop->string, "auth-conf") != 0)
+    {
+        printf("\"cipher\" must be present only when using \"auth-conf\"\n");
+        return -1;
+    }
+    else if(cipher->size == 0 && strcmp(qop->string, "auth-conf") == 0)
+    {
+        printf("\"cipher-opts\" is not present\n");
+        return -1;
+    }
+    else
+        add_char(cipher, '\0');
+
+    if(auth_param_value->size == 0)
+        add_char(auth_param_value, '\0');
+
+    printf("RESULT: realm: %s, nonce: %s, qop: %s, maxbuf: %i, charset: %s, algorithm: %s, cipher: %s, auth_param: %c, auth_param_value: %s\n", 
+                        realm->string, nonce->string, qop->string, *maxbuf, charset->string, algorithm->string, cipher->string, *auth_param, auth_param_value->string);
     return 1; //OK
 }
 
@@ -246,34 +414,41 @@ int make_cnonce_random_string(char *cnonce, int cnonce_size)
     }
     if(cnonce_size <= 8)
         printf("warning: the size of nonce-value string is too short\n");
-        //your message shoul contain at least ** synmbols
+        //your message should contain at least ** synmbols
 
     generate_random_string(cnonce, cnonce_size);
     return 1;
 }
 
-//DEBUG
-char * my_strrchr(const char *cp, int ch)
+char *get_dest_host_pos(const char *host)
 {
-    char *save, *prev_save;
-    char c;
-    for (prev_save = save = (char *) 0; (c = *cp); cp++) {
-        if (c == ch)
+    char *ptr = (char *)host + strlen(host), *save = (char *) 0;
+    short int dot_counter = 0;
+
+    for(; dot_counter <= 1 && ptr != host; ptr--)
+    {
+        if(*ptr == '.')
         {
-            prev_save = save;
-            save = (char *) cp;
+            save = ptr;
+            dot_counter++;
         }
     }
-    if (!prev_save) return save;
-    return prev_save;
+    if (dot_counter == 2)
+        return ++save;
+    return (char *)host;
 }
 
-void  make_digest_uri(const char *host, mpop_string *digest_uri)
+void  make_digest_uri(const char *host, mpop_string *digest_uri, char *dest_host_pos)
 {
     add_string(digest_uri,"imap/");
     add_string(digest_uri, host);
 
-    //new
+    if (host != dest_host_pos)
+    {
+        add_char(digest_uri, '/');
+        add_string(digest_uri, dest_host_pos);
+    }
+    /*//new
     char *ptr = (char *)host + strlen(host), *save = (char *) 0;
     short int dot_counter = 0;
 
@@ -291,7 +466,7 @@ void  make_digest_uri(const char *host, mpop_string *digest_uri)
         add_string(digest_uri, ++save);
     }
     //new
-
+    */
     /*char *save, *prev_save, *ptr = (char *)host;
     char c, ch = '.';
     for (prev_save = save = (char *) 0; (c = *ptr); ptr++) {
@@ -307,7 +482,6 @@ void  make_digest_uri(const char *host, mpop_string *digest_uri)
         add_char(digest_uri, '/');
         add_string(digest_uri, prev_save);
     }*/
-    printf("*** URI, ptr: %s\n", ptr);
 }
 
 int make_response_value(const mpop_string *qop, const mpop_string *username_in_charset, const mpop_string *passwd_in_charset, const mpop_string *realm_in_charset, const mpop_string *nonce, const char *cnonce, const mpop_string *digest_uri, char *response, int response_size)
@@ -406,9 +580,10 @@ int make_response_value(const mpop_string *qop, const mpop_string *username_in_c
 
 int form_client_response_on_server_challenge(const char *host, const char *username, const char *password, mpop_string *response, const mpop_string *realm, const mpop_string *nonce, 
                                              const mpop_string *qop, const mpop_string *stale, int maxbuf, const mpop_string *charset, 
-                                             const mpop_string *algorithm, const mpop_string *cipher, const mpop_string *auth_param, int client_maxbuf, long int nc)
+                                             const mpop_string *algorithm, const mpop_string *cipher, const char *auth_param, const mpop_string *auth_param_value, int client_maxbuf, long int nc)
 {
     bool is_utf8 = false;
+    char *dest_host_pos = get_dest_host_pos(host);
     mpop_string enc_password, enc_username, enc_realm;
     init_string(&enc_password);
     init_string(&enc_username);
@@ -416,6 +591,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
 
     if(charset->size)
     {
+        printf("Charset: %s\n", charset->string);
         if (strcasecmp(charset->string, "ISO-8859-1") != 0 && strcasecmp(charset->string, "US-ASCII") != 0)
         {
             if(strcmp(charset->string, "utf-8") != 0)
@@ -444,11 +620,18 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
             add_string(&enc_realm, realm->string);
     }
 
+    if(response->size) add_char(response, ',');
     if(realm->size)
     {
-        if(response->size) add_char(response, ',');
+        //if(response->size) add_char(response, ',');
         add_string(response, "realm=\"");
         add_string(response, realm->string);
+        add_char(response, '\"');
+    }
+    else
+    {
+        add_string(response, "realm=\"");
+        add_string(response, dest_host_pos);
         add_char(response, '\"');
     }
 
@@ -467,7 +650,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
         return -1;
     }
 
-    make_digest_uri(host, &digest_uri);
+    make_digest_uri(host, &digest_uri, dest_host_pos);
     memset(response_value, 0, 33);
     make_response_value(qop, &enc_username, &enc_password, &enc_realm, nonce, cnonce, &digest_uri, response_value, 33);
     printf("response_value: %s, response_value: %i\n", response_value, strlen(response_value));
@@ -507,7 +690,7 @@ void func(char *qq, int ll)
             printf("cut_token: %s, ll: %i  '\\n' \n", cut_token, ll);
 }
 
-int main()
+int main(int argc, char *argv[])
 {
     /*
     char qqq[] = "qwertyuiop[asdfghjkl;zxcvbnm,.qwertyuiokjhgfdsxcvbhj";
@@ -528,29 +711,47 @@ int main()
     char password[] = "abracadabra";
     int client_maxbuf = 34676;
 
-    char server_answer[] = "realm=\"elwood.innosoft.com\",nonce=\"OA6MG9tEQGm2hh\",qop=\"auth\",algorithm=md5-sess,charset=utf-8";
-    const int server_answer_size = strlen(server_answer);
+    char digest_challenge[] = "realm=\"elwood.innosoft.com\",nonce=\"OA6MG9tEQGm2hh\",qop=\"auth\",algorithm=md5-sess,charset=utf-8";
+    const int digest_challenge_size = strlen(digest_challenge);
 
-    char server_answer1[] = "realm=elwood.innosoft.com,nonce=\"OA6MG9tEQGm2hh\",qop=\"auth\",algorithm=md5-sess,charset=utf-8";
-    const int server_answer_size1 = strlen(server_answer1);
+    char digest_challenge1[] = "realm=elwood.innosoft.com,nonce=\"OA6MG9tEQGm2hh\",qop=\"auth\",algorithm=md5-sess,charset=utf-8";
+    const int digest_challenge_size1 = strlen(digest_challenge1);
 
-    char server_answer2[] = "realm=\"elwood.innosoft.com\"";
-    const int server_answer_size2 = strlen(server_answer2);
+    char digest_challenge2[] = "realm=\"elwood.innosoft.com\"";
+    const int digest_challenge_size2 = strlen(digest_challenge2);
 
-    char server_answer3[] = "realm=elwood.innosoft.com";
-    const int server_answer_size3 = strlen(server_answer3);
+    char digest_challenge3[] = "realm=elwood.innosoft.com";
+    const int digest_challenge_size3 = strlen(digest_challenge3);
 
-    char server_answer4[] = "nonce=\"OA6MG9tEQGm2hh\",maxbuf=123345,qop=\"auth-int\",algorithm=md5-sess,charset=utf-8";
-    const int server_answer_size4 = strlen(server_answer4);
+    char digest_challenge4[] = "nonce=\"OA6MG9tEQGm2hh\",maxbuf=123345,qop=\"auth-int\",algorithm=md5-sess,charset=utf-8";
+    const int digest_challenge_size4 = strlen(digest_challenge4);
 
-    char server_answer5[] = "nonce=\"OA6MG9tEQGm2hh\",maxbuf=123345,qop=\"auth-int\",algorithm=md5-sess,charset=utf-8";
-    const int server_answer_size5 = strlen(server_answer5);
+    char digest_challenge5[] = "realm=\"yandex.com\",nonce=\"OA6MG9tEQGm2hh\",maxbuf=123345,qop=\"auth-int\",algorithm=md5-sess";
+    const int digest_challenge_size5 = strlen(digest_challenge5);
+
+    if(argc < 2)
+    {
+        printf("Too low arguments\n");
+        return 0;
+    }
+    int len = strlen(argv[1]);
+    argv[1][len - 2] = '\0';
+ 
+    if(strlen(argv[1]) >=2 && strncmp(argv[1], "//", 2) == 0)
+    {
+        printf("\n ****************************************** %s ******************************************\n", argv[1]);
+        return 0;
+    }
+
+    const int digest_challenge_size6 = strlen(argv[1]);
 
 
     mpop_string realm, nonce;
     mpop_string qop, stale;
     mpop_string charset, algorithm;
-    mpop_string cipher, auth_param;
+    mpop_string cipher, auth_param_value;
+
+    char auth_param;
 
     int maxbuf;
     long int nc = 1;
@@ -565,13 +766,20 @@ int main()
     init_string(&realm);   init_string(&nonce);
     init_string(&qop);     init_string(&stale);
     init_string(&charset); init_string(&algorithm);
-    init_string(&cipher);  init_string(&auth_param);
-    get_server_challenge_params(host, server_answer5, server_answer_size5, &realm,&nonce, &qop, 
-                                            &stale, &maxbuf, &charset, &algorithm, &cipher, &auth_param);
+    init_string(&cipher);  init_string(&auth_param_value);
+    int res = get_server_challenge_params(host, argv[1], digest_challenge_size6, &realm,&nonce, &qop,
+                                            &stale, &maxbuf, &charset, &algorithm, &cipher, &auth_param, &auth_param_value);
    
+    if(res == -1)
+    {
+        printf("Aborted get_server_challenge_params\n\n");
+        return 0;
+    }
+
+    printf("\n");
     
     form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, &qop,
-                                            &stale, maxbuf, &charset, &algorithm, &cipher, &auth_param, client_maxbuf, nc);
+                                            &stale, maxbuf, &charset, &algorithm, &cipher, &auth_param, &auth_param_value, client_maxbuf, nc);
 
     free_string(&realm);
     free_string(&nonce);
@@ -580,34 +788,6 @@ int main()
     free_string(&algorithm);
     free_string(&cipher);
     free_string(&response);
-    //{
-        //printf("1 realm yes\n");
-        //free(realm);
-    //}
-    //else printf("1 realm no\n");
-
-
-    /*get_server_challenge_params(server_answer1, server_answer_size1, realm, realm_value, nonce, nonce_value, qop_options, 
-                                            qop_list, qop_value, stale, maxbuf, maxbuf_value, charset, algorithm, cipher_opts, 
-                                            cipher_value, auth_param);
-    if(realm) 
-    {
-        printf("2 realm yes\n");
-        //free(realm);
-    }
-    else
-        printf("2 realm no\n");
-
-    get_server_challenge_params(server_answer2, server_answer_size2, realm, realm_value, nonce, nonce_value, qop_options, 
-                                            qop_list, qop_value, stale, maxbuf, maxbuf_value, charset, algorithm, cipher_opts, 
-                                            cipher_value, auth_param);
-    //if(realm) free(realm);
-
-    get_server_challenge_params(server_answer3, server_answer_size3, realm, realm_value, nonce, nonce_value, qop_options, 
-                                            qop_list, qop_value, stale, maxbuf, maxbuf_value, charset, algorithm, cipher_opts, 
-                                            cipher_value, auth_param);
-    //if(realm) free(realm);*/
-
 
     
     /*char tt[15];
