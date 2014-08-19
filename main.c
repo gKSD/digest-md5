@@ -186,7 +186,6 @@ int process_param(char *param, char *param_value, int is_quoted_param_value, mpo
         if(realm->size != 0)
             return 1; //multiple instances of realm value are possible; use the first one
         add_string(realm, param_value);
-        //printf("Empty param_value was added, realm->size: %i\n", realm->size);
     }
     else if(strcmp(param, "nonce") == 0)
     {

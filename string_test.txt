@@ -4,11 +4,14 @@ realm="",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 realm=elwood.innosoft.com,nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 realm=,nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 realm= ,nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
+realm="elwood.innosoft.com",realm="",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
+realm="elwood.innosoft.com",realm="yandex.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 //nonce
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce=OA6MG9tEQGm2hh,qop="auth",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce=,qop="auth",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="",qop="auth",algorithm=md5-sess,charset=utf-8
+realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",nonce="QWERTYUIKJMAS",qop="auth",algorithm=md5-sess,charset=utf-8
 //qop
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-int",algorithm=md5-sess,charset=utf-8
@@ -16,6 +19,7 @@ realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",algorithm=md5
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="olololo",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop=auth,algorithm=md5-sess,charset=utf-8
+realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",qop="auth,auth-conf",algorithm=md5-sess,charset=utf-8
 //maxbuf
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",maxbuf=123456,algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-int",maxbuf=123456,algorithm=md5-sess,charset=utf-8
@@ -23,17 +27,20 @@ realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",maxbuf=123456
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-int",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-int",maxbuf="123456",algorithm=md5-sess,charset=utf-8
+realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-int",maxbuf=123456,algorithm=md5-sess,maxbuf=77777,charset=utf-8
 //charset
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset="utf-8"
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset= utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=ascii
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess
+realm="elwood.innosoft.com",charset=utf-8,nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 //algorithm
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sessqwqw,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",algorithm="md5-sess",charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",charset=utf-8
+realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",algorithm=\"md5-sess\",qop="auth",algorithm=md5-sess,charset=utf-8
 //cipher
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",maxbuf=123456,cipher="3des",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",maxbuf=123456,cipher="des",algorithm=md5-sess,charset=utf-8
@@ -51,6 +58,7 @@ realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-int",maxbuf=123456,
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth",maxbuf=123456,cipher="des",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",maxbuf=123456,cipher=,algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",maxbuf=123456,cipher="",algorithm=md5-sess,charset=utf-8
+realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",qop="auth-conf",cipher="3des",maxbuf=123456,cipher="3des",algorithm=md5-sess,charset=utf-8
 //test on parser
 realm="elwood.innosoft.com",nonce="OA6MG9tEQGm2hh",,qop="auth",algorithm=md5-sess,charset=utf-8
 realm="elwood.innosoft.com",="OA6MG9tEQGm2hh",qop="auth",algorithm=md5-sess,charset=utf-8
