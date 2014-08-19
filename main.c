@@ -25,6 +25,7 @@
 //MD5 hash from rfc
 //#include "global.h"
 #include "md5.h"
+#include "main.h"
 //#include "qqq_md5.h"
 //MD5 hash from rfc
 
@@ -39,7 +40,41 @@ void generate_random_string(char *s, const int slen)
         s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
     s[slen - 1] = '\0';
     //printf("generate_random_string, slen: %i, s: %s, strlen(s): %i\n", slen, s, strlen(s));
-} 
+}
+
+bool is_in_list(struct token_t *list, const char *str)
+{
+    if(strlen(str) == 0) return false;
+    for(struct token_t *p = list; p != NULL; p = p->ptr)
+        if(strcmp(p->string, str) == 0) return true;
+    return false;
+}
+
+int parse_string_into_tokens(char *str, struct token_t **qop)
+{
+    struct token_t *current_qop;
+    char * pch;
+    int pch_len;
+    int counter = 0;
+    pch = strtok (str," ,\t");
+    while (pch != NULL)
+    {
+        pch_len = strlen(pch);
+
+        if(*qop == NULL)
+            current_qop = *qop = (struct token_t *)malloc(sizeof(struct token_t)); 
+        else
+            current_qop = current_qop->ptr = (struct token_t *)malloc(sizeof(struct token_t));
+        counter++;
+        current_qop->string = (char *)malloc(pch_len + 1);
+        snprintf(current_qop->string, pch_len + 1, "%s", pch);
+        current_qop->ptr = NULL;
+
+        pch = strtok (NULL, " ,\t");
+    }
+    return counter;
+}
+
 
 bool is_CTL(char c)
 {
@@ -122,6 +157,7 @@ int parse_next_param(char **str, char *param, char *param_value, int *is_quoted)
         if(delta == 1)
         {
             printf("Invalid digest-challenge, param value can't be empty\n");
+            return -1;
         }
     }
 
@@ -136,9 +172,9 @@ int parse_next_param(char **str, char *param, char *param_value, int *is_quoted)
     return 1;
 }
 
-int process_param(const char *param, const char *param_value, int is_quoted_param_value, mpop_string *realm, mpop_string *nonce,
-                    mpop_string *qop, mpop_string *stale, int *maxbuf, int *maxbuf_found, mpop_string *charset, mpop_string *algorithm,
-                    mpop_string *cipher, char *auth_param, mpop_string *auth_param_value)
+int process_param(char *param, char *param_value, int is_quoted_param_value, mpop_string *realm, mpop_string *nonce,
+                    struct token_t **qop, mpop_string *stale, int *maxbuf, int *maxbuf_found, mpop_string *charset, mpop_string *algorithm,
+                    struct token_t **cipher, char *auth_param, mpop_string *auth_param_value)
 {
     if(strcmp(param, "realm") == 0)
     {
@@ -183,26 +219,36 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
             printf("Error, \"qop\" value is empty\n");
             return -1;
         }
-        if(qop->size != 0)
+        if(*qop != NULL)
         {
             printf("Multiple instances of \"qop\", abort auth\n");
             return -1;
         }
-        int param_value_len = strlen(param_value);
-        if(param_value_len >= 8 && strncmp(param_value, "auth-int", 8) == 0) add_stringn(qop, param_value, 8);
-        else if(param_value_len >= 9 && strncmp(param_value, "auth-conf", 9) == 0)
+        parse_string_into_tokens(param_value, qop);
+        for(struct token_t *p = *qop, *prev = p; p != NULL;)
         {
-            //add_stringn(qop, param_value, 9);
-
-            //TODO: support this qop-option
-            printf("Temprorary unsupported qop-option, abort auth");
-            return -1;
-        }
-        else if(param_value_len >= 4 && strncmp(param_value, "auth", 4) == 0) add_stringn(qop, param_value, 4);
-        else 
-        {
-            printf("Invalid qop-options value\n");
-            return -1;
+            if(strcmp(p->string, "auth-conf") == 0)
+            {
+                //TODO: support this qop-option
+                printf("Temprorary unsupported qop-option, abort auth\n");
+                //return -1;
+            }
+            else if(strcmp(p->string, "auth") != 0 && strcmp(p->string, "auth-int") != 0)
+            {
+                struct token_t *tmp = p;
+                p = p->ptr;
+                prev->ptr = p;
+                if(tmp == *qop) *qop = p;
+                free(tmp);
+                if(*qop == NULL)
+                {
+                    printf("Invalid qop-options value\n");
+                    return -1;
+                }
+                continue;
+            }
+            prev = p;
+            p = p->ptr;
         }
     }
     else if(strcmp(param, "maxbuf") == 0)
@@ -267,7 +313,7 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
     }
     else if(strcmp(param, "cipher") == 0)
     {
-        if(cipher->size != 0)
+        if(*cipher != NULL)
         {
             printf("Multiple instances of \"cipher\", abort auth\n");
             return -1;
@@ -283,14 +329,28 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
             return -1;
         }
 
-        if(strcmp(param_value, "des") == 0 || strcmp(param_value, "3des") == 0 || strcmp(param_value, "rc4") == 0
-                || strcmp(param_value, "rc4-40") == 0 || strcmp(param_value, "rc4-56") == 0)
-            add_string(cipher, param_value);
-        else
-        {
-            printf("Invalid cipher-opts value\n");
-            return -1; //ABORT AUTH
-        }
+        parse_string_into_tokens(param_value, cipher);
+        for(struct token_t *p = *cipher, *prev = p; p != NULL;)
+            if(strcmp(p->string, "des") != 0 && strcmp(p->string, "3des") != 0 &&  strcmp(p->string, "rc4") != 0
+                && strcmp(p->string, "rc4-40") != 0 && strcmp(p->string, "rc4-56") != 0)
+            {
+                struct token_t *tmp = p;
+                p = p->ptr;
+                prev->ptr = p;
+                if(*cipher == tmp) *cipher = p;
+                free(tmp);
+                if(*cipher == NULL)
+                {
+                    printf("Invalid cipher-opts value\n");
+                    return -1;
+                }
+                continue;
+            }
+            else 
+            {
+                prev = p;
+                p = p->ptr;
+            }
     }
     else if(strlen(param) == 1)
     {
@@ -333,9 +393,9 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
 }
 
 int get_server_challenge_params(const char *host, const char *digest_challenge, int digest_challenge_size,
-                                    mpop_string *realm, mpop_string *nonce, mpop_string *qop,
+                                    mpop_string *realm, mpop_string *nonce, struct token_t **qop,
                                     mpop_string *stale, int *maxbuf, mpop_string  *charset,
-                                    mpop_string *algorithm, mpop_string *cipher, char *auth_param, mpop_string *auth_param_value)
+                                    mpop_string *algorithm, struct token_t **cipher, char *auth_param, mpop_string *auth_param_value)
 {
     char *cursor = (char *)digest_challenge;
     char *param, *param_value;
@@ -379,7 +439,6 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
         }
 
         //printf("param: %s, param_value: %s, strlen(param_value): %i\n", param, param_value, strlen(param_value));
-
         if(process_param(param, param_value, is_quoted_param_value, realm, nonce, qop, stale,
                             maxbuf, &maxbuf_found, charset, algorithm, cipher, auth_param, auth_param_value) == -1)
         {
@@ -397,13 +456,12 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
         strcat(command_log, realm->string);
         is_first = false;
     }
-
+    
     if(nonce->size == 0)
     {
         printf("\"nonce\" is not present in server challenge, abort auth\n");
         return -1;
     }
-
     if(is_first)
     {
         strcat(command_log, "nonce: ");
@@ -412,19 +470,29 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
     else strcat(command_log, ", nonce: ");
     strcat(command_log, nonce->string);
 
-    if(qop->size == 0)
+    if(*qop == NULL)
     {
-        add_string(qop, "auth");
+        *qop = (struct token_t *)malloc(sizeof(struct token_t));
+        (*qop)->string = (char *)malloc(5);
+        sprintf((*qop)->string, "auth");
+        (*qop)->ptr = NULL;
     }
-    strcat(command_log, ", qop: ");
-    strcat(command_log, qop->string);
 
-    if(maxbuf_found && strcmp(qop->string, "auth") == 0)
+    strcat(command_log, ", qop: ");
+    is_first = true;
+    for(struct token_t *p = *qop; p != NULL; p = p->ptr)
+    {
+        if(is_first) is_first = false;
+        else strcat(command_log, ",");
+        strcat(command_log, p->string);
+    }
+
+    if(maxbuf_found && strcmp((*qop)->string, "auth") == 0 && (*qop)->ptr == NULL)
     {
         printf("\"maxbuf\" must be present only when using \"auth-int\" or \"auth-conf\"\n");
         return -1;
     }
-    else if(strcmp(qop->string, "auth") != 0)
+    else if(is_in_list(*qop, "auth-int") || is_in_list(*qop, "auth-conf"))
     {
         if(!maxbuf_found)
             *maxbuf = 65535; //default
@@ -449,20 +517,26 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
     strcat(command_log, ", algorithm: ");
     strcat(command_log, algorithm->string);
 
-    if(cipher->size != 0 && strcmp(qop->string, "auth-conf") != 0)
+    if(*cipher != NULL && !is_in_list(*qop, "auth-conf"))
     {
         printf("\"cipher\" must be present only when using \"auth-conf\"\n");
         return -1;
     }
-    else if(cipher->size == 0 && strcmp(qop->string, "auth-conf") == 0)
+    else if(*cipher == NULL && strcmp((*qop)->string, "auth-conf") == 0 && (*qop)->ptr == NULL)
     {
-        printf("\"cipher-opts\" is not present\n");
+        printf("\"cipher-opts\" is not present while using auth-conf\n");
         return -1;
     }
-    else if (cipher->size)
+    else if (*cipher != NULL)
     {
         strcat(command_log, ", cipher: ");
-        strcat(command_log, cipher->string);
+        is_first = true;
+        for(struct token_t *p = *cipher; p != NULL; p = p->ptr)
+        {
+            if(is_first) is_first = false;
+            else strcat(command_log, ",");
+            strcat(command_log, p->string);
+        }
     }
 
     if(auth_param_value->size != 0)
@@ -562,7 +636,7 @@ void  make_digest_uri(const char *host, mpop_string *digest_uri, char *dest_host
     }*/
 }
 
-int make_response_value(const mpop_string *qop, const mpop_string *username_in_charset, const mpop_string *passwd_in_charset, const mpop_string *realm_in_charset, const mpop_string *nonce, const char *cnonce, const mpop_string *digest_uri, char *response, int response_size)
+int make_response_value(const char *qop, const mpop_string *username_in_charset, const mpop_string *passwd_in_charset, const mpop_string *realm_in_charset, const mpop_string *nonce, const char *cnonce, const mpop_string *digest_uri, char *response, int response_size)
 {
     if(response_size < 33)
     {
@@ -620,7 +694,7 @@ int make_response_value(const mpop_string *qop, const mpop_string *username_in_c
     //form A2
     add_string(&A2, "AUTHENTICATE:");
     add_stringn(&A2, digest_uri->string, digest_uri->size);
-    if(strcmp(qop->string, "auth-conf") == 0 || strcmp(qop->string, "auth-int") == 0 )
+    if(strcmp(qop, "auth-conf") == 0 || strcmp(qop, "auth-int") == 0 )
         add_string(&A2, ":00000000000000000000000000000000");
 
     printf("A1: %s, A2: %s\n", A1.string, A2.string);
@@ -637,7 +711,7 @@ int make_response_value(const mpop_string *qop, const mpop_string *username_in_c
     add_char(&KD,':');
     add_string(&KD, cnonce);
     add_char(&KD,':');
-    add_stringn(&KD, qop->string, qop->size);
+    add_string(&KD, qop);
     add_char(&KD,':');
 
     memset(digest, 0, 33);
@@ -657,8 +731,8 @@ int make_response_value(const mpop_string *qop, const mpop_string *username_in_c
 }
 
 int form_client_response_on_server_challenge(const char *host, const char *username, const char *password, mpop_string *response, const mpop_string *realm, const mpop_string *nonce, 
-                                             const mpop_string *qop, const mpop_string *stale, int maxbuf, const mpop_string *charset, 
-                                             const mpop_string *algorithm, const mpop_string *cipher, const char *auth_param, const mpop_string *auth_param_value, int client_maxbuf, long int nc)
+                                             const char *qop, const mpop_string *stale, int maxbuf, const mpop_string *charset, 
+                                             const mpop_string *algorithm, const char *cipher, const char *auth_param, const mpop_string *auth_param_value, int client_maxbuf, long int nc)
 {
     bool is_utf8 = false;
     char *dest_host_pos = get_dest_host_pos(host);
@@ -734,7 +808,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
     printf("response_value: %s, response_value: %i\n", response_value, strlen(response_value));
 
     memset(ss, 0, 4096);
-    snprintf(ss, 4096, "username=\"%s\",nonce=\"%s\",cnonce=\"%s\",nc=%08x,qop=%s,digest-uri=\"%s\",response=%s", enc_username.string, nonce->string, cnonce, nc, qop->string, digest_uri.string, response_value);
+    snprintf(ss, 4096, "username=\"%s\",nonce=\"%s\",cnonce=\"%s\",nc=%08x,qop=%s,digest-uri=\"%s\",response=%s", enc_username.string, nonce->string, cnonce, nc, qop, digest_uri.string, response_value);
 
     if(response->size) add_char(response, ',');
     add_string(response, ss);
@@ -747,7 +821,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
         add_string(response, ss);
     }
    
-    if(strcmp(qop->string, "auth-conf") == 0)
+    if(strcmp(qop, "auth-conf") == 0)
     {
         //TODO: support different ciphers
     }
@@ -825,11 +899,12 @@ int main(int argc, char *argv[])
 
 
     mpop_string realm, nonce;
-    mpop_string qop, stale;
+    mpop_string stale, auth_param_value;
     mpop_string charset, algorithm;
-    mpop_string cipher, auth_param_value;
 
     char auth_param;
+    struct token_t *qop;
+    struct token_t *cipher;
 
     int maxbuf;
     long int nc = 1;
@@ -841,10 +916,10 @@ int main(int argc, char *argv[])
 
 
     //snprintf(server_answer, server_answer_size, "%s", r);
-    init_string(&realm);   init_string(&nonce);
-    init_string(&qop);     init_string(&stale);
-    init_string(&charset); init_string(&algorithm);
-    init_string(&cipher);  init_string(&auth_param_value);
+    init_string(&realm);     init_string(&nonce);
+    init_string(&stale);     init_string(&charset); 
+    init_string(&algorithm); init_string(&auth_param_value);
+    
     int res = get_server_challenge_params(host, argv[1], digest_challenge_size6, &realm,&nonce, &qop,
                                             &stale, &maxbuf, &charset, &algorithm, &cipher, &auth_param, &auth_param_value);
    
@@ -856,35 +931,28 @@ int main(int argc, char *argv[])
 
     printf("\n");
     
-    //form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, &qop,
-    //                                        &stale, maxbuf, &charset, &algorithm, &cipher, &auth_param, &auth_param_value, client_maxbuf, nc);
+    
+    //form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, qop,
+    //                                        &stale, maxbuf, &charset, &algorithm, cipher, &auth_param, &auth_param_value, client_maxbuf, nc);
 
     free_string(&realm);
     free_string(&nonce);
-    free_string(&qop);
     free_string(&charset);
     free_string(&algorithm);
-    free_string(&cipher);
     free_string(&response);
 
-    
-    /*char tt[15];
-    generate_random_string(tt, 15);
-    printf("\nget_random(): %s", tt);
-   
-    char sss[10];
-    snprintf(sss, 10, "aaaa");
-    printf("\n\nsss: %s,strlen(s): %i\n", sss, strlen(sss));
-    */
-
-    mpop_string test;
-    init_string(&test);
-    add_char(&test, '\0');
-    printf("test.size: %i, test.alloc_size: %i\n", test.size, test.alloc_size);
-    if (*test.string == '\0')
-        printf("123\n");
-    printf("456\n");
-    
+    for(struct token_t *p = qop, *tmp; p != NULL;)
+    {
+        tmp = p;
+        p = p->ptr;
+        free(tmp);
+    }
+    for(struct token_t *p = cipher, *tmp; p != NULL;)
+    {
+        tmp = p;
+        p = p->ptr;
+        free(tmp);
+    }
     return 0; 
 }
 
