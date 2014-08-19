@@ -239,6 +239,7 @@ int process_param(char *param, char *param_value, int is_quoted_param_value, mpo
                 p = p->ptr;
                 prev->ptr = p;
                 if(tmp == *qop) *qop = p;
+                free(tmp->string);
                 free(tmp);
                 if(*qop == NULL)
                 {
@@ -338,6 +339,7 @@ int process_param(char *param, char *param_value, int is_quoted_param_value, mpo
                 p = p->ptr;
                 prev->ptr = p;
                 if(*cipher == tmp) *cipher = p;
+                free(tmp->string);
                 free(tmp);
                 if(*cipher == NULL)
                 {
@@ -903,8 +905,8 @@ int main(int argc, char *argv[])
     mpop_string charset, algorithm;
 
     char auth_param;
-    struct token_t *qop;
-    struct token_t *cipher;
+    struct token_t *qop = NULL;
+    struct token_t *cipher = NULL;
 
     int maxbuf;
     long int nc = 1;
@@ -926,6 +928,25 @@ int main(int argc, char *argv[])
     if(res == -1)
     {
         printf("Aborted get_server_challenge_params\n\n");
+        free_string(&realm);
+        free_string(&nonce);
+        free_string(&charset);
+        free_string(&algorithm);
+        free_string(&response);
+        for(struct token_t *p = qop, *tmp; p != NULL;)
+        {
+            tmp = p;
+            p = p->ptr;
+            free(tmp->string);
+            free(tmp);
+        }
+        for(struct token_t *p = cipher, *tmp; p != NULL;)
+        {
+            tmp = p;
+            p = p->ptr;
+            free(tmp->string);
+            free(tmp);
+        }
         return 0;
     }
 
@@ -945,22 +966,15 @@ int main(int argc, char *argv[])
     {
         tmp = p;
         p = p->ptr;
+        free(tmp->string);
         free(tmp);
     }
     for(struct token_t *p = cipher, *tmp; p != NULL;)
     {
         tmp = p;
         p = p->ptr;
+        free(tmp->string);
         free(tmp);
     }
     return 0; 
 }
-
-
-
-
-
-
-
-
-
