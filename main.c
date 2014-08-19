@@ -4,6 +4,7 @@
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <string.h>
 #include <strings.h>
@@ -118,13 +119,17 @@ int parse_next_param(char **str, char *param, char *param_value, int *is_quoted)
         while(cursor && *cursor && *cursor != ',') cursor++;
         *is_quoted = 0;
         delta = cursor - param_value_pos + 1;
+        if(delta == 1)
+        {
+            printf("Invalid digest-challenge, param value can't be empty\n");
+        }
     }
 
-    if(delta == 1)
+    /*if(delta == 1)
     {
          printf("Invalid digest-challenge\n");
          return -1;
-    }
+    }*/
     snprintf(param_value, delta, "%s", param_value_pos);
 
     *str = cursor;
@@ -139,18 +144,24 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
     {
         if (!is_quoted_param_value)
         {
-            printf("Error, realm not well-formed! \n");
+            printf("Error, \"realm\" not well-formed! \n");
             return -1; //not well-formed realm-value
         }
         if(realm->size != 0)
             return 1; //multiple instances of realm value are possible; use the first one
         add_string(realm, param_value);
+        //printf("Empty param_value was added, realm->size: %i\n", realm->size);
     }
     else if(strcmp(param, "nonce") == 0)
     {
         if (!is_quoted_param_value)
         {
-            printf("Error, nonce not well-formed! \n");
+            printf("Error, \"nonce\" not well-formed! \n");
+            return -1;
+        }
+        if(strlen(param_value) == 0)
+        {
+            printf("Error, \"nonce\" value is empty\n");
             return -1;
         }
         if(nonce->size != 0)
@@ -165,6 +176,11 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
         if (!is_quoted_param_value)
         {
             printf("Error, qop-options not well-formed! \n");
+            return -1;
+        }
+        if(strlen(param_value) == 0)
+        {
+            printf("Error, \"qop\" value is empty\n");
             return -1;
         }
         if(qop->size != 0)
@@ -196,7 +212,17 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
             printf("Multiple instances of \"maxbuf\", abort auth\n");
             return -1;
         }
+        if(is_quoted_param_value && strlen(param_value) == 0)
+        {
+            printf("Error, \"maxbuf\" value is empty\n");
+            return -1;
+        }
         *maxbuf = atoi(param_value);
+        if(*maxbuf < 0)
+        {
+            printf("Invalid \"maxbuf\" value\n");
+            return -1;
+        }
         *maxbuf_found = 1;
     }
     else if(strcmp(param, "charset") == 0)
@@ -204,6 +230,11 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
         if(charset->size != 0)
         {
             printf("Multiple instances of \"charset\", abort auth\n");
+            return -1;
+        }
+        if(is_quoted_param_value && strlen(param_value) == 0)
+        {
+            printf("Error, \"charset\" value is empty\n");
             return -1;
         }
         if(strcmp(param_value, "utf-8") == 0)
@@ -219,6 +250,11 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
         if(algorithm->size != 0)
         {
             printf("Multiple instances of \"algorithm\", abort auth\n");
+            return -1;
+        }
+        if(is_quoted_param_value && strlen(param_value) == 0)
+        {
+            printf("Error, \"algorithm\" value is empty\n");
             return -1;
         }
         if(strcmp(param_value, "md5-sess") == 0)
@@ -239,6 +275,11 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
         if (!is_quoted_param_value)
         {
             printf("Error, \"cipher-opt\" not well-formed! \n");
+            return -1;
+        }
+        if(strlen(param_value) == 0)
+        {
+            printf("Error, \"cipher\" value is empty\n");
             return -1;
         }
 
@@ -274,6 +315,11 @@ int process_param(const char *param, const char *param_value, int is_quoted_para
             printf("Multiple instances of \"stale\", abort auth\n");
             return -1;
         }
+        if(strlen(param_value) == 0)
+        {
+            printf("Error, \"stale\" value is empty\n");
+            return -1;
+        }
         if(strcmp(param_value, "true") == 0)
             add_string(stale, param_value);
         else
@@ -294,6 +340,11 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
     char *cursor = (char *)digest_challenge;
     char *param, *param_value;
     int is_quoted_param_value;
+
+    const int max_log_size = 32768;
+    char command_log[max_log_size];
+    bool is_first = true;
+    memset(command_log, 0, max_log_size);
 
     *maxbuf = 0;
 
@@ -327,7 +378,7 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
             return -1;
         }
 
-        //printf("param: %s, param_value: %s\n", param, param_value);
+        //printf("param: %s, param_value: %s, strlen(param_value): %i\n", param, param_value, strlen(param_value));
 
         if(process_param(param, param_value, is_quoted_param_value, realm, nonce, qop, stale,
                             maxbuf, &maxbuf_found, charset, algorithm, cipher, auth_param, auth_param_value) == -1)
@@ -336,48 +387,68 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
             free(param_value);
             return -1;
         }
-        //if(*cursor == ',') cursor++;
     }
     free(param);
     free(param_value);
 
-    if(realm->size == 0)
+    if(realm->size != 0)
     {
-        //printf("ImapXS: client forms realm\n");
-        //add_string(realm, host);
-        add_char(realm, '\0');
+        strcat(command_log, "realm: ");
+        strcat(command_log, realm->string);
+        is_first = false;
     }
+
     if(nonce->size == 0)
     {
         printf("\"nonce\" is not present in server challenge, abort auth\n");
         return -1;
     }
 
+    if(is_first)
+    {
+        strcat(command_log, "nonce: ");
+        is_first = false;
+    }
+    else strcat(command_log, ", nonce: ");
+    strcat(command_log, nonce->string);
+
     if(qop->size == 0)
     {
         add_string(qop, "auth");
     }
+    strcat(command_log, ", qop: ");
+    strcat(command_log, qop->string);
 
     if(maxbuf_found && strcmp(qop->string, "auth") == 0)
     {
         printf("\"maxbuf\" must be present only when using \"auth-int\" or \"auth-conf\"\n");
         return -1;
     }
-    else if(!maxbuf_found && strcmp(qop->string, "auth") != 0)
+    else if(strcmp(qop->string, "auth") != 0)
     {
-        *maxbuf = 65535; //default
+        if(!maxbuf_found)
+            *maxbuf = 65535; //default
+        strcat(command_log, ", maxbuf: ");
+        char buf[33];
+        snprintf(buf, 33, "%i", *maxbuf);
+        strcat(command_log, buf);
     }
 
-    if(charset->size == 0)
+    if(charset->size != 0)
     {
-        add_char(charset, '\0');
-        //default -> ascii
+        strcat(command_log, ", charset: ");
+        strcat(command_log, charset->string);
     }
+
     if(algorithm->size == 0)
     {
         printf("\"algorithm\" is not present in server challenge, abort auth\n");
         return -1;
     }
+
+    strcat(command_log, ", algorithm: ");
+    strcat(command_log, algorithm->string);
+
     if(cipher->size != 0 && strcmp(qop->string, "auth-conf") != 0)
     {
         printf("\"cipher\" must be present only when using \"auth-conf\"\n");
@@ -388,14 +459,21 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
         printf("\"cipher-opts\" is not present\n");
         return -1;
     }
-    else
-        add_char(cipher, '\0');
+    else if (cipher->size)
+    {
+        strcat(command_log, ", cipher: ");
+        strcat(command_log, cipher->string);
+    }
 
-    if(auth_param_value->size == 0)
-        add_char(auth_param_value, '\0');
+    if(auth_param_value->size != 0)
+    {
+        strcat(command_log, ", auth_param: ");
+        strcat(command_log, auth_param);
+        strcat(command_log, ", auth_param_value: ");
+        strcat(command_log, auth_param_value->string);
+    }
 
-    printf("RESULT: realm: %s, nonce: %s, qop: %s, maxbuf: %i, charset: %s, algorithm: %s, cipher: %s, auth_param: %c, auth_param_value: %s\n", 
-                        realm->string, nonce->string, qop->string, *maxbuf, charset->string, algorithm->string, cipher->string, *auth_param, auth_param_value->string);
+    printf("RESULT: %s\n", command_log);
     return 1; //OK
 }
 
@@ -778,8 +856,8 @@ int main(int argc, char *argv[])
 
     printf("\n");
     
-    form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, &qop,
-                                            &stale, maxbuf, &charset, &algorithm, &cipher, &auth_param, &auth_param_value, client_maxbuf, nc);
+    //form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, &qop,
+    //                                        &stale, maxbuf, &charset, &algorithm, &cipher, &auth_param, &auth_param_value, client_maxbuf, nc);
 
     free_string(&realm);
     free_string(&nonce);
@@ -798,6 +876,14 @@ int main(int argc, char *argv[])
     snprintf(sss, 10, "aaaa");
     printf("\n\nsss: %s,strlen(s): %i\n", sss, strlen(sss));
     */
+
+    mpop_string test;
+    init_string(&test);
+    add_char(&test, '\0');
+    printf("test.size: %i, test.alloc_size: %i\n", test.size, test.alloc_size);
+    if (*test.string == '\0')
+        printf("123\n");
+    printf("456\n");
     
     return 0; 
 }
