@@ -264,7 +264,7 @@ int process_param(char *param, char *param_value, int is_quoted_param_value, mpo
             return -1;
         }
         *maxbuf = atoi(param_value);
-        if(*maxbuf < 0)
+        if(*maxbuf <= 0)
         {
             printf("Invalid \"maxbuf\" value\n");
             return -1;
@@ -287,7 +287,7 @@ int process_param(char *param, char *param_value, int is_quoted_param_value, mpo
             add_string(charset, param_value);
         else
         {
-            printf("Invalid \"charset\", abort auth\n");
+            printf("Invalid \"charset\", only utf-8 charset is allowed\n");
             return -1;
         }
     }
@@ -831,7 +831,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
     free_string(&enc_username);
     free_string(&enc_password);
 
-    printf("\n\n\nResult response: %s\n", response->string);
+    printf("RESPONSE: %s\n", response->string);
     return 1; //OK
 }
 
@@ -861,7 +861,8 @@ int main(int argc, char *argv[])
     char host[] = "aqaa.bbb.ccc.imap.yandex.ru";
 
     char username[] = "SOFIA";
-    char password[] = "abracadabra";
+    //char password[] = "abracadabra";
+    char password[] = "secret";
     int client_maxbuf = 34676;
 
     char digest_challenge[] = "realm=\"elwood.innosoft.com\",nonce=\"OA6MG9tEQGm2hh\",qop=\"auth\",algorithm=md5-sess,charset=utf-8";
@@ -950,10 +951,13 @@ int main(int argc, char *argv[])
     }
 
     printf("\n");
+
+    char qop1[] = "auth";
+    char cipher1[] = "";
     
     
-    //form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, qop,
-    //                                        &stale, maxbuf, &charset, &algorithm, cipher, &auth_param, &auth_param_value, client_maxbuf, nc);
+    form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, qop1,
+                                            &stale, maxbuf, &charset, &algorithm, cipher1, &auth_param, &auth_param_value, client_maxbuf, nc);
 
     free_string(&realm);
     free_string(&nonce);
