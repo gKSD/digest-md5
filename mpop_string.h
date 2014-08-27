@@ -3,6 +3,8 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h> /* memset */
+#include <unistd.h> /* close */
 
 
 /* Strings */

@@ -26,6 +26,7 @@
 //#include "global.h"
 #include "md5.h"
 #include "main.h"
+#include "mailbox.h"
 //#include "qqq_md5.h"
 //MD5 hash from rfc
 
