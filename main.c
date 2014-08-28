@@ -859,6 +859,7 @@ int main(int argc, char *argv[])
 
     //char host[] = "yandex.ru";
     //char host[] = ".ru";
+    
     char host[] = "aqaa.bbb.ccc.imap.yandex.ru";
 
     char username[] = "SOFIA";
