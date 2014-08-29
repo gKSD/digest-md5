@@ -245,6 +245,8 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
 		return -1;
 	}*/
 
+
+    //Getting capability line from IMAP server
 	bytes = recv(memc->sd, memc->rcv_buf, *bytes_recv, 0);
 	if(bytes > 0) assert( bytes < *bytes_recv );
 	else if (bytes == -1 && errno == 11) printf("Error while reading\n");
@@ -256,6 +258,7 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
     }
 
 
+    //sending request for authorization
     strcpy(memc->snd_buf, "1 AUTHENTICATE DIGEST-MD5");
     *bytes_send = strlen(memc->snd_buf);
     printf("C: %s\n", memc->snd_buf); 
@@ -271,6 +274,7 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
         printf("bytes sent: %i\n", bytes);
 
 
+    //waiting and recieving server's answer on our request
     memset( memc->rcv_buf, 0, *bytes_recv );
     bytes = recv(memc->sd, memc->rcv_buf, *bytes_recv, 0);
     if(bytes > 0) assert( bytes < *bytes_recv );
