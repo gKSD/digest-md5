@@ -222,13 +222,6 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
 		return -1;
 	}
 
-	/*bytes = send(memc->sd, memc->snd_buf, bytes_send, MSG_NOSIGNAL | MSG_DONTWAIT);
-	if(bytes < 0)
-	{
-		warn("XS Error: memcached_multiget sending: %i bytes(%s)", bytes, strerror(errno));
-		return -1;
-	}*/
-
 	gettimeofday(&t_start, 0);
 
 	// some data from memcached! 
@@ -257,14 +250,12 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
         return -1;
     }
 
-
     //sending request for authorization
-    strcpy(memc->snd_buf, "1 AUTHENTICATE DIGEST-MD5");
+    strcpy(memc->snd_buf, "1 AUTHENTICATE DIGEST-MD5\n");
     *bytes_send = strlen(memc->snd_buf);
     printf("C: %s\n", memc->snd_buf); 
-    //bytes = send(memc->sd, memc->snd_buf, *bytes_send, MSG_NOSIGNAL | MSG_DONTWAIT);
-    bytes = send(memc->sd, memc->snd_buf, *bytes_send, 0);
-    //bytes = write(memc->sd, memc->snd_buf, *bytes_send);
+    bytes = send(memc->sd, memc->snd_buf, *bytes_send, MSG_NOSIGNAL | MSG_DONTWAIT);
+    //bytes = send(memc->sd, memc->snd_buf, *bytes_send, 0);
 	if(bytes < 0)
 	{
 		warn("Error while sending: %i bytes(%s)", bytes, strerror(errno));
@@ -327,7 +318,6 @@ int main(int argc, char* argv[])
     get_data(&memc, &bytes_send, &bytes_recv, &total_timeout);
 
     //bytes_send
-
-
+    close(memc.sd);
     return 1;
 }

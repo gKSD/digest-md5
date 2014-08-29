@@ -85,7 +85,7 @@ int iconv_to_utf8_mpop_str( iconv_t cd , char *inbuf, int inbuflen, mpop_string 
     char *start = to->string + to->size;
     result = iconv( cd, &in, &inlen, &start, &outbuflen);
     if(result == (size_t)-1 && errno != EINVAL) // EINVAL means "incomplete multibyte sequence has been encountered in the input.", we can ignore that
-        printf("convert error %s");
+        printf("convert error \n");
     to->size = start - to->string;
     *start = '\0';
     return 1;
