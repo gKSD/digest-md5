@@ -246,12 +246,38 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
 	}*/
 
 	bytes = recv(memc->sd, memc->rcv_buf, *bytes_recv, 0);
-
 	if(bytes > 0) assert( bytes < *bytes_recv );
-	else if (bytes == -1 && errno == 11) printf("XS Error: memcached server read timeout (50000 msec)\n");
+	else if (bytes == -1 && errno == 11) printf("Error while reading\n");
+    printf("S: %s\n", memc->rcv_buf);
+    if (!strcasestr(memc->rcv_buf, "OK"))
+    {
+        printf("Server sent bad answer, abort\n");
+        return -1;
+    }
 
-    printf("After recv \n");
-    printf("Result: %s\n", memc->rcv_buf);
+
+    strcpy(memc->snd_buf, "1 AUTHENTICATE DIGEST-MD5");
+    *bytes_send = strlen(memc->snd_buf);
+    printf("C: %s\n", memc->snd_buf); 
+    //bytes = send(memc->sd, memc->snd_buf, *bytes_send, MSG_NOSIGNAL | MSG_DONTWAIT);
+    bytes = send(memc->sd, memc->snd_buf, *bytes_send, 0);
+    //bytes = write(memc->sd, memc->snd_buf, *bytes_send);
+	if(bytes < 0)
+	{
+		warn("Error while sending: %i bytes(%s)", bytes, strerror(errno));
+		return -1;
+	}
+    else
+        printf("bytes sent: %i\n", bytes);
+
+
+    memset( memc->rcv_buf, 0, *bytes_recv );
+    bytes = recv(memc->sd, memc->rcv_buf, *bytes_recv, 0);
+    if(bytes > 0) assert( bytes < *bytes_recv );
+	else if (bytes == -1 && errno == 11) printf("Error while reading\n");
+    printf("1111\n");
+    printf("S: %s\n", memc->rcv_buf);
+
 
 	//malloc_canary_check( memc->rcv_buf, bytes_recv );
 
