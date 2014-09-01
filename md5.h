@@ -78,3 +78,4 @@ void MD5Update PROTO_LIST
 void MD5Final PROTO_LIST ((unsigned char [16], MD5_CTX *));
 
 char *MD5Data(const unsigned char *data, unsigned int len, char *buf);
+char *MD5End(MD5_CTX *ctx, char *buf);

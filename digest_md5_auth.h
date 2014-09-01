@@ -21,7 +21,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
                                                 const mpop_string *auth_param_value, int client_maxbuf, long int nc);
 int make_response_value(const char *qop, const mpop_string *username_in_charset, const mpop_string *passwd_in_charset, 
                                                 const mpop_string *realm_in_charset, const mpop_string *nonce, const char *cnonce, 
-                                                const mpop_string *digest_uri, char *response, int response_size);
+                                                const mpop_string *digest_uri, const long int nc, char *response, int response_size);
 void  make_digest_uri(const char *host, mpop_string *digest_uri, char *dest_host_pos);
 int make_cnonce_random_string(char *cnonce, int cnonce_size);
 

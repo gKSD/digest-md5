@@ -655,97 +655,79 @@ void  make_digest_uri(const char *host, mpop_string *digest_uri, char *dest_host
     }*/
 }
 
-int make_response_value(const char *qop, const mpop_string *username_in_charset, const mpop_string *passwd_in_charset, const mpop_string *realm_in_charset, const mpop_string *nonce, const char *cnonce, const mpop_string *digest_uri, char *response, int response_size)
+int make_response_value(const char *qop, const mpop_string *username_in_charset, const mpop_string *passwd_in_charset, const mpop_string *realm_in_charset, const mpop_string *nonce, const char *cnonce, const mpop_string *digest_uri, const long int nc, char *response, int response_size)
 {
-    if(response_size < 33)
+    if(response_size != 33)
     {
         printf("response-value size must be 33 byte");
         return -1;
     }
+    
     //LOWER CASE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    mpop_string A1, A2, KD;
-    init_string(&A1);
-    init_string(&A2);
-    init_string(&KD);
+    char A1[33], A2[33], login_passw[33]; 
+    MD5_CTX ctx;
     
-    int ss_len = username_in_charset->size + passwd_in_charset->size + realm_in_charset->size + 3;
-    char *ss = (char *)malloc(ss_len);
-    if(!ss)
+    //forming hash of "login:realm:password" string
+    printf("!!! %s:%s:%s\n", username_in_charset->string,realm_in_charset->string,passwd_in_charset->string);
+    MD5Init(&ctx);
+    MD5Update(&ctx, username_in_charset->string, username_in_charset->size);
+    if(realm_in_charset->size > 0)
     {
-        printf("Can't allocate memory\n");
-        free_string(&A1);
-        free_string(&A2);
-        return -1;
+        MD5Update(&ctx, ":", 1);
+        MD5Update(&ctx, realm_in_charset->string, realm_in_charset->size);
     }
-    
-    if(realm_in_charset->size)
-        snprintf(ss, ss_len, "%s:%s:%s", username_in_charset->string, realm_in_charset->string, passwd_in_charset->string);
-    else
-        snprintf(ss, ss_len, "%s::%s", username_in_charset->string, passwd_in_charset->string);
 
-    printf("ss: %s, ss_len: %i, strlen(ss) = %i\n", ss, ss_len, strlen(ss));
-    char digest[33];
-    MD5Data((unsigned char *)ss, ss_len - 1, digest);
-    printf("ss: %s, strlen(digest)\n", digest, strlen(digest));
- 
-    //form A1
-    //
-    //if(authzid->size)
-    /*{
-        add_string(&A1, digest);
-        add_char(&A1,':');
-        add_stringn(&A1, nonce->string, nonce->size);
-        add_char(&A1,':');
-        add_stringn(&A1, cnonce->string, cnonce->size);
-        add_char(&A1,':');
-        add_stringn(&A1, authzid->string, authzid->size);
+    MD5Update(&ctx, ":", 1);
+    MD5Update(&ctx, passwd_in_charset->string, passwd_in_charset->size);
+    MD5End(&ctx, login_passw);
+    printf("login_passw: %s\n", login_passw);
+
+    //forming A1
+    MD5Init(&ctx);
+    MD5Update(&ctx, login_passw, strlen(login_passw));
+    MD5Update(&ctx, ":", 1);
+    MD5Update(&ctx, nonce->string, nonce->size);
+    MD5Update(&ctx, ":", 1);
+    MD5Update(&ctx, cnonce, strlen(cnonce));
+    /*if(authzid->size > 0)
+    {
+        MD5Update(&ctx, ":", 1);
+        MD5Update(&ctx, authzid->string, authzid->size);
     }*/
-    //else
-    //{
-    add_string(&A1, digest);
-    add_char(&A1,':');
-    add_stringn(&A1, nonce->string, nonce->size);
-    add_char(&A1,':');
-    add_string(&A1, cnonce);
-    //}
+    MD5End(&ctx, A1);
+    printf("A1: %s\n", A1);
 
-    //form A2
-    add_string(&A2, "AUTHENTICATE:");
-    add_stringn(&A2, digest_uri->string, digest_uri->size);
-    if(strcmp(qop, "auth-conf") == 0 || strcmp(qop, "auth-int") == 0 )
-        add_string(&A2, ":00000000000000000000000000000000");
+    //forming A2
+    MD5Init(&ctx);
+    MD5Update(&ctx, "AUTHENTICATE:", 13);
+    MD5Update(&ctx, digest_uri->string, digest_uri->size);
+    if(strcmp(qop, "auth-int") == 0 || strcmp(qop, "auth-conf") == 0)
+    {
+        printf("Is auth-int or auth-conf\n");
+        MD5Update(&ctx, ":00000000000000000000000000000000", 33);
+    }
+    MD5End(&ctx, A2);
+    printf("A2: %s\n", A2);
 
-    printf("A1: %s, A2: %s\n", A1.string, A2.string);
-
+    //forming final md5 hash
+    MD5Init(&ctx);
+    MD5Update(&ctx, A1, 32);
+    MD5Update(&ctx, ":", 1);
+    MD5Update(&ctx, nonce->string, nonce->size);
+    MD5Update(&ctx, ":", 1);
+    char tmp[9];
+    snprintf(tmp, 9, "%08x", nc);
+    MD5Update(&ctx, tmp, 8);
+    MD5Update(&ctx, ":", 1);
+    MD5Update(&ctx, cnonce, strlen(cnonce));
+    MD5Update(&ctx, ":", 1);
+    MD5Update(&ctx, qop, strlen(qop));
+    MD5Update(&ctx, ":", 1);
+    MD5Update(&ctx, A2, 32);
+    MD5End(&ctx, response);
+    printf("KD: %s\n", response);
     
-    //form KD
-    memset(digest, 0, 33);
-    MD5Data((unsigned char *)A1.string, A1.size, digest);
-    printf("A1 digest: %s, strlen(A1 digest): %i\n", digest, strlen(digest));
-    add_string(&KD, digest);
-    
-    add_char(&KD,':');
-    add_stringn(&KD, nonce->string, nonce->size);
-    add_char(&KD,':');
-    add_string(&KD, cnonce);
-    add_char(&KD,':');
-    add_string(&KD, qop);
-    add_char(&KD,':');
-
-    memset(digest, 0, 33);
-    MD5Data((unsigned char *)A2.string, A2.size, digest);
-    printf("A2 digest: %s, strlen(A2 digest): %i\n", digest, strlen(digest));
-    add_string(&KD, digest);
-
-    printf("KD: %s\n", KD.string);
-
-    MD5Data((unsigned char *)KD.string, KD.size, response); 
-
-    free(ss);
-    free_string(&A1);
-    free_string(&A2);
-    free_string(&KD);
     return 1;
 }
 
@@ -823,7 +805,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
 
     make_digest_uri(host, &digest_uri, dest_host_pos);
     memset(response_value, 0, 33);
-    make_response_value(qop, &enc_username, &enc_password, &enc_realm, nonce, cnonce, &digest_uri, response_value, 33);
+    make_response_value(qop, &enc_username, &enc_password, &enc_realm, nonce, cnonce, &digest_uri, nc, response_value, 33);
     printf("response_value: %s, response_value: %i\n", response_value, strlen(response_value));
 
     memset(ss, 0, 4096);
