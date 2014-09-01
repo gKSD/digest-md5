@@ -742,7 +742,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
     init_string(&enc_username);
     init_string(&enc_realm);
 
-    if(charset->size)
+    /*if(charset->size)
     {
         printf("Charset: %s\n", charset->string);
         if (strcasecmp(charset->string, "ISO-8859-1") != 0 && strcasecmp(charset->string, "US-ASCII") != 0)
@@ -756,7 +756,7 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
             add_string(response, charset->string);
             is_utf8 = true;
         }
-    }
+    }*/
 
     if(is_utf8) //decode only username and password and realm-value
     {
