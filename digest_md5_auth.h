@@ -1,6 +1,8 @@
 
 #ifndef DIGEST_MD5_AUTH_H_
 #define DIGEST_MD5_AUTH_H_
+#include "mpop_string.h"
+
 struct token_t
 {
     char *string;

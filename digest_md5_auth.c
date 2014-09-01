@@ -399,7 +399,22 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
                                     mpop_string *stale, int *maxbuf, mpop_string  *charset,
                                     mpop_string *algorithm, struct token_t **cipher, char *auth_param, mpop_string *auth_param_value)
 {
-    char *cursor = (char *)digest_challenge;
+    printf("KSD get_server_challenge_params\n");
+    /*char *cursor;
+    mpop_string decoded_server_challenge;
+    init_string(&decoded_server_challenge); 
+    if(!is_decoded_from_base64)
+    {
+        decoder_state state;
+        init_state(&state);
+        cursor = (char *) digest_challenge;
+        if(*cursor == '+') cursor++;
+        while(*cursor == ' ') cursor++;
+        decode_base64(&decoded_server_challenge, cursor, &state);
+    }*/
+
+    char *cursor = (char *) digest_challenge;
+    printf("cursor: %s\n", cursor);
     char *param, *param_value;
     int is_quoted_param_value;
 
@@ -550,6 +565,8 @@ int get_server_challenge_params(const char *host, const char *digest_challenge, 
     }
 
     printf("RESULT: %s\n", command_log);
+
+    //free_string(&decoded_server_challenge);
     return 1; //OK
 }
 
@@ -815,13 +832,13 @@ int form_client_response_on_server_challenge(const char *host, const char *usern
     if(response->size) add_char(response, ',');
     add_string(response, ss);
 
-    if(client_maxbuf != 65535)
+    /*if(client_maxbuf != 65535)
     {
         if(response->size) add_char(response, ',');
         add_string(response, "maxbuf=");
         sprintf(ss, "%i", maxbuf);
         add_string(response, ss);
-    }
+    }*/
    
     if(strcmp(qop, "auth-conf") == 0)
     {

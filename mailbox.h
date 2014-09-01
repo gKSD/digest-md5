@@ -86,6 +86,9 @@ extern int mpopd_timeout;
         }       base;
     }       decoder_state;
 
+
+    void    init_state(decoder_state * state);
+
     void    init_encoder_state(encoder_state * state);
     void    decode_uu(mpop_string * to, const char *from, decoder_state * state);
     void    decode_quoted(mpop_string * to, const char *from, decoder_state * state);

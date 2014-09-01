@@ -14,6 +14,8 @@
 #include <string.h>
 #include <iconv.h>
 
+#include <stdio.h>
+
 #include "mailbox.h"
 
 #ifndef lint
@@ -187,6 +189,7 @@ encode_base64(mpop_string * to, const char *from, int size, encoder_state * stat
 	/* &encode_base64 does NOT place \n at the end of encoded string.
 	 * it is important because of precise converting of total_size */
 	for (i=0; i<size; i++) {
+        //printf("b: %s\n", from + i);
 		to_base64(from[i], state, to);
 	}
 }
@@ -195,7 +198,7 @@ void
 decode_base64(mpop_string * to, const char *from, decoder_state * state)
 {
     unsigned char *b = (unsigned char *)from;
-    for (; *b; b++) 
+    for (; *b; b++)
         from_base64(*b, state, to);
 }
 

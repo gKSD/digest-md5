@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "mpop_string.h"
-
+#include "mailbox.h"
+#include <ctype.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -18,6 +19,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <malloc.h>
+#include "digest_md5_auth.h"
 typedef struct {
     struct sockaddr_in addr;    // current memcached server address
     int sd;                     // socket descriptor
@@ -69,7 +71,7 @@ static inline int set_timeout_once(size_t microsec)
       itvl.it_value.tv_usec = microsec;				// 50 micro sec * 1000 = 50 mili sec
       if (setitimer (ITIMER_REAL, &itvl, NULL) < 0) 
       {
-         warn("XS Error: settimer error");
+         printf("XS Error: settimer error\n");
          return -1;
       }
       
@@ -84,21 +86,21 @@ static inline int timed_connect_remote_server(const struct sockaddr_in* addr, co
 	sd = socket(AF_INET, SOCK_STREAM, 0);
 	if(sd <= 0)
 	{
-		warn("XS Error: to create socket");
+		printf("XS Error: to create socket\n");
 		return -1;
 	}
 
 	if(sizeof(addr->sin_addr) == 0)
 	{
 		close(sd);
-		warn("XS Error: invalid ip");;
+		printf("XS Error: invalid ip\n");
 		return -1;
 	}
 
 	flags = fcntl(sd, F_GETFL, 0);
 	if(fcntl( sd, F_SETFL, flags | O_NONBLOCK) == -1)
 	{
-		warn("XS Error: make nonblocking socket");
+		printf("XS Error: make nonblocking socket\n");
 		close(sd);
 		return -1;
 	}
@@ -106,7 +108,7 @@ static inline int timed_connect_remote_server(const struct sockaddr_in* addr, co
 	connected = connect(sd, (struct sockaddr*)addr, sizeof(*addr));
 	if (connected == -1 && errno != EINPROGRESS)
 	{
-		warn("XS Error: connect error (%s)", strerror(errno));
+		printf("XS Error: connect error (%s)\n", strerror(errno));
 		close(sd);
 		return -1;
 	}
@@ -124,13 +126,13 @@ static inline int timed_connect_remote_server(const struct sockaddr_in* addr, co
 
 		if(poll_ret == 0)
 		{
-			warn("XS Error: memcached server connect timeout [%s:%i, %i msec]",host, port, timeout);
+			printf("Error server connect timeout [%s:%i, %i msec]\n",host, port, timeout);
 			close(sd);
 			return -1;
 		}
 		else if(poll_ret == -1 || poll_ret != 1)
 		{
-			warn("XS Error: poll error: %s [poll returns: %i]", strerror(errno), poll_ret);
+			printf("Error: poll error: %s [poll returns: %i]\n", strerror(errno), poll_ret);
 			close(sd);
 			return -1;
 		}
@@ -139,7 +141,7 @@ static inline int timed_connect_remote_server(const struct sockaddr_in* addr, co
 	flags = fcntl(sd, F_GETFL, 0);
 	if(fcntl( sd, F_SETFL, flags & ~O_NONBLOCK) == -1)
 	{
-		warn("XS Error: make blocking socket");
+		printf("XS Error: make blocking socket\n");
 		close(sd);
 		return -1;
 	}
@@ -205,7 +207,7 @@ static bool open_connect(xmemc_t *memc, char *host, int port, int64_t *total_tim
     //return sd;
 }
 
-int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *total_timeout)
+int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *total_timeout, char *host)
 {
     int bytes;
 	struct timeval t_start;
@@ -224,7 +226,32 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
 
 	gettimeofday(&t_start, 0);
 
-	// some data from memcached! 
+
+    mpop_string realm, nonce;
+    mpop_string stale, auth_param_value;
+    mpop_string charset, algorithm;
+
+    char auth_param;
+    struct token_t *qop = NULL;
+    struct token_t *cipher = NULL;
+
+    int maxbuf;
+    long int nc = 1;
+
+    mpop_string response;
+    init_string(&response);
+
+    init_string(&realm);     init_string(&nonce);
+    init_string(&stale);     init_string(&charset); 
+    init_string(&algorithm); init_string(&auth_param_value);
+    
+    int res;
+    int server_challenge_size = 0;
+    //char host[] = "aqaa.bbb.ccc.imap.yandex.ru";
+    char username[] = "sofia";
+    char password[] = "123456";
+    int client_maxbuf = 34676;
+
     *bytes_recv = 32267;
 	memc->rcv_buf = (char *) malloc (*bytes_recv + 1);
 	memset( memc->rcv_buf, 0, *bytes_recv );
@@ -258,23 +285,104 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
     //bytes = send(memc->sd, memc->snd_buf, *bytes_send, 0);
 	if(bytes < 0)
 	{
-		warn("Error while sending: %i bytes(%s)", bytes, strerror(errno));
+		printf("Error while sending: %i bytes(%s)\n", bytes, strerror(errno));
 		return -1;
 	}
-    else
-        printf("bytes sent: %i\n", bytes);
-
+    printf("bytes sent: %i\n", bytes);
 
     //waiting and recieving server's answer on our request
     memset( memc->rcv_buf, 0, *bytes_recv );
     bytes = recv(memc->sd, memc->rcv_buf, *bytes_recv, 0);
     if(bytes > 0) assert( bytes < *bytes_recv );
 	else if (bytes == -1 && errno == 11) printf("Error while reading\n");
-    printf("1111\n");
     printf("S: %s\n", memc->rcv_buf);
 
+    
+   //preparing response and sending it to server 
+    char *tmp = memc->rcv_buf;
+    if(*tmp == '+') tmp++;
+    while(*tmp == ' ')tmp++;
+    mpop_string request;
+    init_string(&request);
+    decoder_state state1;
+    init_state(&state1);
+    decode_base64(&request, tmp, &state1);
+    decode_flush(&request, &state1);
+    printf("request.string: %s\n", request.string);
+    res = get_server_challenge_params(host, /*memc->rcv_buf*/ request.string, request.size, &realm,&nonce, &qop,
+                                                 &stale, &maxbuf, &charset, &algorithm, &cipher, &auth_param,
+                                                 &auth_param_value);
 
 	//malloc_canary_check( memc->rcv_buf, bytes_recv );
+
+    char qop1[] = "auth";
+    char cipher1[] = "";
+
+    form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, qop1, &stale, maxbuf, &charset, 
+                                                    &algorithm, cipher1, &auth_param, &auth_param_value, client_maxbuf, nc);
+
+    mpop_string req;
+    init_string(&req);
+    encoder_state state;
+    init_encoder_state(&state);
+    encode_base64(&req, response.string, response.size, &state);
+    encode_flush(&req, &state);
+
+    int n = req.size;
+    for(int i = 0; i < n; i++)
+    {
+        if (req.string[i] == '\n')
+        {
+            int  j = i;
+            for (; j < n - 1; j++)
+                req.string[j]  = req.string[j+1];
+            req.string[n - 1] = '\0';
+            n--;
+        }
+    }
+
+    printf("Base 64 response: %s\n", req.string);
+    //strcpy(memc->snd_buf, "\n");
+    sprintf(memc->snd_buf, "%s\n", req.string);
+    *bytes_send = strlen(memc->snd_buf);
+    printf("C: %s\n", memc->snd_buf);
+    bytes = send(memc->sd, memc->snd_buf, *bytes_send, MSG_NOSIGNAL | MSG_DONTWAIT);
+    if(bytes < 0)
+    {
+        printf("Error while sending: %i bytes(%s)\n", bytes, strerror(errno));
+        return -1;
+    }
+    printf("bytes sent: %i\n", bytes);
+    free_string(&req);
+
+    //waiting and recieving server's answer on our request
+    memset( memc->rcv_buf, 0, *bytes_recv );
+    bytes = recv(memc->sd, memc->rcv_buf, *bytes_recv, 0);
+    if(bytes > 0) assert( bytes < *bytes_recv );
+    else if (bytes == -1 && errno == 11) printf("Error while reading\n");
+    printf("S: %s\n", memc->rcv_buf);
+    
+    free_string(&realm);    
+    free_string(&nonce);
+    free_string(&charset);
+    free_string(&algorithm);
+    free_string(&response);
+
+    for(struct token_t *p = qop, *tmp; p != NULL;)
+    {
+        tmp = p;
+        p = p->ptr;
+        free(tmp->string);
+        free(tmp);
+    }
+    for(struct token_t *p = cipher, *tmp; p != NULL;)
+    {
+        tmp = p;
+        p = p->ptr;
+        free(tmp->string);
+        free(tmp);
+    }
+
 
 	gettimeofday(&t_end, 0);
 
@@ -315,7 +423,7 @@ int main(int argc, char* argv[])
 
     if(!memc.snd_buf) return 0;
 
-    get_data(&memc, &bytes_send, &bytes_recv, &total_timeout);
+    get_data(&memc, &bytes_send, &bytes_recv, &total_timeout, host);
 
     //bytes_send
     close(memc.sd);
