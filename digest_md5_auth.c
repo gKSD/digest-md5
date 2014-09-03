@@ -29,6 +29,9 @@
 #include "mailbox.h"
 //#include "qqq_md5.h"
 //MD5 hash from rfc
+//
+
+#define MD5_DIGEST_LENGTH 16
 
 void generate_random_string(char *s, const int slen)
 {
@@ -665,27 +668,29 @@ int make_response_value(const char *qop, const mpop_string *username_in_charset,
     
     //LOWER CASE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    char A1[33], A2[33], login_passw[33]; 
+    char A1[33], A2[33];
+    unsigned char login_passw[MD5_DIGEST_LENGTH]; 
     MD5_CTX ctx;
     
     //forming hash of "login:realm:password" string
     printf("!!! %s:%s:%s\n", username_in_charset->string,realm_in_charset->string,passwd_in_charset->string);
     MD5Init(&ctx);
     MD5Update(&ctx, username_in_charset->string, username_in_charset->size);
+    MD5Update(&ctx, ":", 1);
     if(realm_in_charset->size > 0)
     {
-        MD5Update(&ctx, ":", 1);
+        printf("KSD is realm_in_charset\n");
         MD5Update(&ctx, realm_in_charset->string, realm_in_charset->size);
     }
 
     MD5Update(&ctx, ":", 1);
     MD5Update(&ctx, passwd_in_charset->string, passwd_in_charset->size);
-    MD5End(&ctx, login_passw);
-    printf("login_passw: %s\n", login_passw);
+    MD5Final(login_passw, &ctx);
+    //printf("login_passw: %s\n", login_passw);
 
     //forming A1
     MD5Init(&ctx);
-    MD5Update(&ctx, login_passw, strlen(login_passw));
+    MD5Update(&ctx, login_passw, MD5_DIGEST_LENGTH);
     MD5Update(&ctx, ":", 1);
     MD5Update(&ctx, nonce->string, nonce->size);
     MD5Update(&ctx, ":", 1);

@@ -315,6 +315,8 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
 
 	//malloc_canary_check( memc->rcv_buf, bytes_recv );
 
+    free_string(&request);
+
     char qop1[] = "auth";
     char cipher1[] = "";
 
@@ -361,6 +363,40 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
     if(bytes > 0) assert( bytes < *bytes_recv );
     else if (bytes == -1 && errno == 11) printf("Error while reading\n");
     printf("S: %s\n", memc->rcv_buf);
+
+   //gettintg rspath from server 
+    tmp = memc->rcv_buf;
+    if(*tmp == '+') tmp++;
+    while(*tmp == ' ')tmp++;
+    mpop_string request1;
+    init_string(&request1);
+    init_state(&state1);
+    decode_base64(&request1, tmp, &state1);
+    decode_flush(&request1, &state1);
+    printf("decoded: %s\n", request1.string);
+
+    if(strstr(request1.string, "rspauth") != NULL)
+    {
+        sprintf(memc->snd_buf, "\n");
+        *bytes_send = strlen(memc->snd_buf);
+        printf("C: %s\n", memc->snd_buf);
+        bytes = send(memc->sd, memc->snd_buf, *bytes_send, MSG_NOSIGNAL | MSG_DONTWAIT);
+        if(bytes < 0)
+        {
+             printf("Error while sending: %i bytes(%s)\n", bytes, strerror(errno));
+             return -1;
+        }
+
+        memset( memc->rcv_buf, 0, *bytes_recv );
+        bytes = recv(memc->sd, memc->rcv_buf, *bytes_recv, 0);
+        if(bytes > 0) assert( bytes < *bytes_recv );
+        else if (bytes == -1 && errno == 11) printf("Error while reading\n");
+        printf("S: %s\n", memc->rcv_buf);
+    }
+    else 
+    {
+        printf("authentication failed\n");
+    }
     
     free_string(&realm);    
     free_string(&nonce);
