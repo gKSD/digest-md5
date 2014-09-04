@@ -32,10 +32,9 @@ int main(int argc, char *argv[])
     
     char host[] = "aqaa.bbb.ccc.imap.yandex.ru";
 
-    char username[] = "SOFIA";
+    char username[] = "sofia";
     //char password[] = "abracadabra";
-    char password[] = "secret";
-    int client_maxbuf = 34676;
+    char password[] = "123456";
 
     char digest_challenge[] = "realm=\"elwood.innosoft.com\",nonce=\"OA6MG9tEQGm2hh\",qop=\"auth\",algorithm=md5-sess,charset=utf-8";
     const int digest_challenge_size = strlen(digest_challenge);
@@ -72,84 +71,30 @@ int main(int argc, char *argv[])
     const int digest_challenge_size6 = strlen(argv[1]);
 
 
-    mpop_string realm, nonce;
-    mpop_string stale, auth_param_value;
-    mpop_string charset, algorithm;
-
-    char auth_param;
-    struct token_t *qop = NULL;
-    struct token_t *cipher = NULL;
-
-    int maxbuf;
-    long int nc = 1;
-
+    struct digest_md5_auth_request auth_request;
+    init_digest_md5_auth_request(&auth_request);
     mpop_string response;
     init_string(&response);
     //char response[4096];
     //memset(response, 0, 4096);
 
-
-    //snprintf(server_answer, server_answer_size, "%s", r);
-    init_string(&realm);     init_string(&nonce);
-    init_string(&stale);     init_string(&charset); 
-    init_string(&algorithm); init_string(&auth_param_value);
     
-    int res = get_server_challenge_params(host, argv[1], digest_challenge_size6, &realm,&nonce, &qop,
-                                            &stale, &maxbuf, &charset, &algorithm, &cipher, &auth_param, &auth_param_value);
+    int res = get_server_challenge_params(host, argv[1], digest_challenge_size6, &auth_request);
    
     if(res == -1)
     {
         printf("Aborted get_server_challenge_params\n\n");
-        free_string(&realm);
-        free_string(&nonce);
-        free_string(&charset);
-        free_string(&algorithm);
+        free_digest_md5_auth_request(&auth_request);
         free_string(&response);
-        for(struct token_t *p = qop, *tmp; p != NULL;)
-        {
-            tmp = p;
-            p = p->ptr;
-            free(tmp->string);
-            free(tmp);
-        }
-        for(struct token_t *p = cipher, *tmp; p != NULL;)
-        {
-            tmp = p;
-            p = p->ptr;
-            free(tmp->string);
-            free(tmp);
-        }
         return 0;
     }
 
     printf("\n");
 
-    char qop1[] = "auth";
-    char cipher1[] = "";
-    
-    
-    form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, qop1,
-                                            &stale, maxbuf, &charset, &algorithm, cipher1, &auth_param, &auth_param_value, client_maxbuf, nc);
+    add_string(&auth_request.qop, "auth");
 
-    free_string(&realm);
-    free_string(&nonce);
-    free_string(&charset);
-    free_string(&algorithm);
+    form_client_response_on_server_challenge(host, username, password, &response, &auth_request);
+    free_digest_md5_auth_request(&auth_request);
     free_string(&response);
-
-    for(struct token_t *p = qop, *tmp; p != NULL;)
-    {
-        tmp = p;
-        p = p->ptr;
-        free(tmp->string);
-        free(tmp);
-    }
-    for(struct token_t *p = cipher, *tmp; p != NULL;)
-    {
-        tmp = p;
-        p = p->ptr;
-        free(tmp->string);
-        free(tmp);
-    }
     return 0; 
 }

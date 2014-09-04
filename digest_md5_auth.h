@@ -3,26 +3,60 @@
 #define DIGEST_MD5_AUTH_H_
 #include "mpop_string.h"
 
+struct digest_md5_auth_request
+{
+    //digest-challenge params
+    mpop_string realm; //host or one of those (the first) from digest challenge
+    mpop_string nonce;
+    mpop_string stale;
+    mpop_string charset;
+    mpop_string algorithm;
+
+    char auth_param;
+    mpop_string auth_param_value;
+
+    struct token_t *qop_list; //list of qop from server
+    mpop_string qop; //the chosen one
+
+    struct token_t *cipher_list;//list from server
+    mpop_string cipher; //the chosen one
+
+    int maxbuf;
+    bool maxbuf_found;
+    int client_maxbuf;
+
+    //digest-response params
+    mpop_string cnonce;
+    mpop_string digest_uri;
+    mpop_string authzid;
+
+    //if needed
+    mpop_string enc_password;
+    mpop_string enc_username;
+    mpop_string enc_realm;
+
+    char *dest_host_pos;
+    long int nonce_count; //first is 00000001
+
+    char response_value[33];
+    int response_value_size;
+};
+
 struct token_t
 {
     char *string;
     struct token_t *ptr;
 };
 
-int get_server_challenge_params(const char *host, const char *digest_challenge, int digest_challenge_size, mpop_string *realm, 
-                                                mpop_string *nonce, struct token_t **qop, mpop_string *stale, int *maxbuf, 
-                                                mpop_string  *charset, mpop_string *algorithm, struct token_t **cipher, 
-                                                char *auth_param, mpop_string *auth_param_value);
+void init_digest_md5_auth_request(struct digest_md5_auth_request *auth_request);
+void free_digest_md5_auth_request(struct digest_md5_auth_request *auth_request);
 
-int form_client_response_on_server_challenge(const char *host, const char *username, const char *password, mpop_string *response, 
-                                                const mpop_string *realm, const mpop_string *nonce, const char *qop, 
-                                                const mpop_string *stale, int maxbuf, const mpop_string *charset,
-                                                const mpop_string *algorithm, const char *cipher, const char *auth_param, 
-                                                const mpop_string *auth_param_value, int client_maxbuf, long int nc);
-int make_response_value(const char *qop, const mpop_string *username_in_charset, const mpop_string *passwd_in_charset, 
-                                                const mpop_string *realm_in_charset, const mpop_string *nonce, const char *cnonce, 
-                                                const mpop_string *digest_uri, const long int nc, char *response, int response_size);
-void  make_digest_uri(const char *host, mpop_string *digest_uri, char *dest_host_pos);
+int get_server_challenge_params(const char *host, const char *digest_challenge, int digest_challenge_size, 
+                                            struct digest_md5_auth_request *auth_request);
+int form_client_response_on_server_challenge(const char *host, const char *username, const char *password,
+                                                mpop_string *response, struct digest_md5_auth_request *auth_request);
+int make_response_value(struct digest_md5_auth_request *auth_request);
+void make_digest_uri(const char *host, struct digest_md5_auth_request *auth_request);
 int make_cnonce_random_string(char *cnonce, int cnonce_size);
 
 #endif

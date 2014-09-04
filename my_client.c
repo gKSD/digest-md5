@@ -227,30 +227,17 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
 	gettimeofday(&t_start, 0);
 
 
-    mpop_string realm, nonce;
-    mpop_string stale, auth_param_value;
-    mpop_string charset, algorithm;
-
-    char auth_param;
-    struct token_t *qop = NULL;
-    struct token_t *cipher = NULL;
-
-    int maxbuf;
-    long int nc = 1;
-
+    struct digest_md5_auth_request auth_request;
+    init_digest_md5_auth_request(&auth_request);
     mpop_string response;
     init_string(&response);
-
-    init_string(&realm);     init_string(&nonce);
-    init_string(&stale);     init_string(&charset); 
-    init_string(&algorithm); init_string(&auth_param_value);
-    
+                   
     int res;
     int server_challenge_size = 0;
     //char host[] = "aqaa.bbb.ccc.imap.yandex.ru";
     char username[] = "sofia";
     char password[] = "123456";
-    int client_maxbuf = 34676;
+    auth_request.client_maxbuf = 12345;
 
     *bytes_recv = 32267;
 	memc->rcv_buf = (char *) malloc (*bytes_recv + 1);
@@ -309,19 +296,15 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
     decode_base64(&request, tmp, &state1);
     decode_flush(&request, &state1);
     printf("request.string: %s\n", request.string);
-    res = get_server_challenge_params(host, /*memc->rcv_buf*/ request.string, request.size, &realm,&nonce, &qop,
-                                                 &stale, &maxbuf, &charset, &algorithm, &cipher, &auth_param,
-                                                 &auth_param_value);
+    res = get_server_challenge_params(host,/*memc->rcv_buf*/ request.string, request.size, &auth_request);
 
 	//malloc_canary_check( memc->rcv_buf, bytes_recv );
 
     free_string(&request);
 
-    char qop1[] = "auth";
-    char cipher1[] = "";
 
-    form_client_response_on_server_challenge(host, username, password, &response, &realm, &nonce, qop1, &stale, maxbuf, &charset, 
-                                                    &algorithm, cipher1, &auth_param, &auth_param_value, client_maxbuf, nc);
+    add_string(&auth_request.qop, "auth");
+    form_client_response_on_server_challenge(host, username, password, &response, &auth_request); 
 
     mpop_string req;
     init_string(&req);
@@ -383,8 +366,11 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
         bytes = send(memc->sd, memc->snd_buf, *bytes_send, MSG_NOSIGNAL | MSG_DONTWAIT);
         if(bytes < 0)
         {
-             printf("Error while sending: %i bytes(%s)\n", bytes, strerror(errno));
-             return -1;
+            printf("Error while sending: %i bytes(%s)\n", bytes, strerror(errno));
+            free_string(&request1);
+            free_digest_md5_auth_request(&auth_request);
+            free_string(&response);
+            return -1;
         }
 
         memset( memc->rcv_buf, 0, *bytes_recv );
@@ -397,29 +383,11 @@ int get_data(xmemc_t *memc, size_t *bytes_send, size_t *bytes_recv, int64_t *tot
     {
         printf("authentication failed\n");
     }
-    
-    free_string(&realm);    
-    free_string(&nonce);
-    free_string(&charset);
-    free_string(&algorithm);
+
+    free_string(&request1);
+    free_digest_md5_auth_request(&auth_request);
     free_string(&response);
-
-    for(struct token_t *p = qop, *tmp; p != NULL;)
-    {
-        tmp = p;
-        p = p->ptr;
-        free(tmp->string);
-        free(tmp);
-    }
-    for(struct token_t *p = cipher, *tmp; p != NULL;)
-    {
-        tmp = p;
-        p = p->ptr;
-        free(tmp->string);
-        free(tmp);
-    }
-
-
+    
 	gettimeofday(&t_end, 0);
 
 	mcs = (t_end.tv_sec - t_start.tv_sec)*1000000;
